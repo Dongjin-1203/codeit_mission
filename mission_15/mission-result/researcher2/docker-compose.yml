@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # 연구자1의 학습 컨테이너 (모델 및 데이터 생성)
+  training:
+    image: hambur1203/codeit-mission15-ml-model:latest
+    container_name: ml-training
+    volumes:
+      - shared-models:/app/models
+    command: python main.py
+
+  # Jupyter Notebook 컨테이너 (추론 수행)
+  jupyter:
+    image: jupyter/minimal-notebook:latest
+    container_name: jupyter-inference
+    ports:
+      - "8888:8888"
+    volumes:
+      - shared-models:/home/jovyan/models
+      - ./inference.ipynb:/home/jovyan/inference.ipynb
+      - ./:/home/jovyan/work
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    depends_on:
+      - training
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+
+volumes:
+  shared-models:
