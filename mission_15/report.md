@@ -99,10 +99,268 @@ memory usage: 117.3+ KB
 3. **학습 데이터, 검증 데이터 분할**: test 데이터가 별도로 있기때문에 검증 데이터를 8:2로 분할하였음.
 
 ## 모델링
+### 모델 선택: Linear Regression
+
+본 프로젝트에서는 **선형 회귀(Linear Regression)** 모델을 선택했습니다.
+
+#### 선택 근거
+
+**1) 데이터 특성 분석 결과**
+```python
+상관관계 분석:
+- Previous Scores ↔ Performance Index: 0.91 (강한 선형 관계)
+- Hours Studied ↔ Performance Index: 0.37 (중간 선형 관계)
+- 나머지 변수들: 0.05 이하 (약한 관계)
+```
+
+타겟 변수와 독립 변수 간 **강한 선형 관계**가 관찰되어 복잡한 비선형 모델이 불필요함을 확인했습니다.
+
+**2) 문제의 단순성**
+- 독립변수 5개로 구성된 단순한 구조
+- 특징 간 복잡한 상호작용이 없음
+- 데이터셋 크기(7,000개)가 적당하여 과적합 위험 낮음
+
+**3) 해석 가능성(Interpretability)**
+```python
+Standardized Coefficients:
+- Previous Scores: 17.57  → 1 표준편차 증가 시 17.57점 상승
+- Hours Studied: 7.42     → 1 표준편차 증가 시 7.42점 상승
+```
+회귀 계수를 통해 각 변수의 영향력을 직관적으로 파악 가능합니다.
+
+#### **선택 논리**
+
+**✅ Linear Regression을 선택한 이유:**
+
+1. **오컴의 면도날 원칙** (Occam's Razor)
+   - "간단한 모델이 복잡한 모델보다 우선한다"
+   - 선형 관계가 명확한 경우 복잡한 모델은 불필요
+
+2. **계산 효율성**
+   ```python
+   학습 시간 비교 (7,000개 샘플 기준):
+   - Linear Regression: ~0.01초
+   - Random Forest: ~2초
+   - XGBoost: ~5초
+   - Neural Network: ~30초
+   ```
+
+3. **배포 및 유지보수**
+   - 모델 파일 크기: 1-2KB (pkl)
+   - 추론 속도: 실시간 가능
+   - Docker 이미지 크기 최소화
+
+4. **과적합 방지**
+   - Train/Valid split에서 일반화 성능 우수
+   - 규제 없이도 안정적인 성능
 
 ## 모델 학습 결과
 <img width="783" height="413" alt="image" src="https://github.com/user-attachments/assets/469cee86-0ccf-4c9e-9a34-ab8786a87d27" />
+### 1. RMSE (Root Mean Squared Error) 개념
+
+**정의:**
+```
+RMSE = √(Σ(y_pred - y_true)² / n)
+```
+
+**의미:**
+- 예측값과 실제값 간의 **평균 오차 크기**
+- 값이 작을수록 정확한 모델
+- **타겟 변수와 같은 단위**를 가짐 (Performance Index 점수)
+
+**특징:**
+- 큰 오차에 더 큰 페널티 부여 (제곱 연산)
+- MAE보다 이상치에 민감
+- 회귀 문제에서 가장 널리 사용되는 지표
 
 ---
 
-# Docker 설정
+### 2. 모델 성능 결과
+
+#### **최종 RMSE 점수**
+
+```python
+RMSE: 2.0103
+```
+
+---
+
+# Docker 워크플로우
+
+### 연구자1: 모델 학습 환경 구축 및 배포
+
+#### **Step 1: 프로젝트 구조 설정**
+
+```bash
+mission-result/researcher1/
+├── main.py                    # 모델 학습 스크립트
+├── Dockerfile                 # 이미지 빌드 파일
+├── requirements.txt           # Python 패키지
+└── data/
+    ├── mission15_train.csv    # 학습 데이터
+    └── mission15_test.csv     # 테스트 데이터
+```
+
+#### **Step 2: Python 학습 스크립트 작성**
+
+```python
+# main.py - 주요 기능
+def load_and_preprocess_data():
+    """데이터 로드 및 범주형 변수 인코딩"""
+    
+def normalize_features():
+    """StandardScaler로 정규화"""
+    
+def train_model():
+    """LinearRegression 학습"""
+    
+def save_model():
+    """모델 + scaler를 pkl 파일로 저장"""
+    
+def copy_test_data():
+    """테스트 데이터를 models/로 복사 (연구자2 제공)"""
+```
+
+**핵심 포인트:**
+- 모델과 전처리기를 딕셔너리로 함께 저장
+- 테스트 데이터를 models/ 디렉토리에 복사하여 연구자2에게 제공
+
+#### **Step 3: requirements.txt 작성**
+
+```txt
+pandas
+scikit-learn
+numpy
+```
+
+버전을 고정하지 않아 최신 버전 사용 (재현성보다 호환성 우선)
+
+#### **Step 4: Dockerfile 작성**
+
+```dockerfile
+# Python 3.11 경량 이미지 사용
+FROM python:3.11-slim
+
+# 작업 디렉토리 설정
+WORKDIR /app
+
+# 의존성 설치 (캐싱 최적화)
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# 소스 코드 및 데이터 복사
+COPY main.py .
+COPY data/ ./data/
+
+# 모델 저장 디렉토리 생성
+RUN mkdir -p models
+
+# 컨테이너 실행 시 자동으로 학습
+CMD ["python", "main.py"]
+```
+
+**설계 의도:**
+- `requirements.txt`를 먼저 복사하여 레이어 캐싱 활용
+- `models/` 디렉토리는 볼륨으로 마운트될 예정
+- `CMD`로 실행 시 자동으로 모델 학습
+
+#### **Step 5: Docker 이미지 빌드**
+
+```bash
+# researcher1 디렉토리에서 실행
+cd mission-result/researcher1/
+
+# 이미지 빌드
+docker build -t hambur1203/codeit-mission15-ml-model:latest .
+
+# 이미지 업로드
+docker push hambur1203/codeit-mission15-ml-model:latest
+```
+
+### 연구자2: 추론 환경 구성 및 실행
+
+#### **Step 1: 작업 디렉토리 생성 및 컨테이너 실행**
+
+```bash
+mkdir mission-result/researcher2
+cd mission-result/researcher2
+
+# 컨테이너 실행하여 모델 생성
+docker run -v $(pwd)/test-output:/app/models \hambur1203/codeit-mission15-ml-model:latest
+```
+
+#### **Step 2: docker-compose.yml 작성**
+
+```yaml
+services:
+  # 연구자1의 학습 이미지 실행
+  training:
+    image: hambur1203/codeit-mission15-ml-model:latest
+    container_name: ml-training
+    volumes:
+      - shared-models:/app/models
+    command: python main.py
+
+  # Jupyter Notebook 환경
+  jupyter:
+    image: jupyter/minimal-notebook:latest
+    container_name: jupyter-inference
+    ports:
+      - "8888:8888"
+    volumes:
+      - shared-models:/home/jovyan/models          # 모델 파일 접근
+      - ./inference.ipynb:/home/jovyan/inference.ipynb
+      - ./:/home/jovyan/work                       # 결과 저장용
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    depends_on:
+      - training
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+
+volumes:
+  shared-models:  # 두 컨테이너 간 파일 공유용 Named Volume
+```
+
+**핵심 메커니즘:**
+1. **Named Volume (`shared-models`)**
+   - `training` 컨테이너가 생성한 파일을 `jupyter` 컨테이너가 접근
+   - Docker 내부 볼륨으로 컨테이너 간 데이터 공유
+
+2. **의존성 관리 (`depends_on`)**
+   - `jupyter`가 `training` 다음에 시작
+   - 모델 파일이 생성된 후 추론 가능
+
+3. **Bind Mount (`./:/home/jovyan/work`)**
+   - 로컬 디렉토리와 컨테이너 디렉토리 연결
+   - `result.csv`가 호스트에 저장됨
+  
+#### **Step 3: inference.ipynb 작성**: 리포지토리 확인
+
+#### **Step 4: 컨테이너 실행**
+
+```bash
+# docker-compose 실행
+docker-compose up
+```
+
+#### **Step 5: Jupyter에서 추론 수행**
+
+```bash
+# 브라우저에서 접속
+http://localhost:8888/lab
+```
+
+**노트북 실행:**
+1. 왼쪽 파일 탐색기에서 `inference.ipynb` 열기
+2. 셀 순서대로 실행 (Shift + Enter)
+3. 마지막 셀에서 `main()` 실행
+
+**실행 결과:**
+```
+모델 로드 완료
+테스트 데이터 로드 완료: 3000개 샘플
+예측 결과 (처음 10개):
+[91.83294433 45.1396592  84.29368324 65.53197585 47.42518663 
+ 30.90313336 72.62567883 58.83080941 40.07411392 81.82245791]
+예측 결과 저장 완료: work/result.csv
+```
