@@ -1,4 +1,4 @@
-# 스프린트 미션 15: Docker Hub 실습
+# Mission 15 Report: 학생 성적 예측 모델 및 Docker 기반 협업 시스템
 
 ---
 
