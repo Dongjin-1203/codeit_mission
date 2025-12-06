@@ -3,6 +3,8 @@
 **작성일:** 2024-12-06  
 **프로젝트:** MNIST 손글씨 숫자 분류 웹 애플리케이션  
 **배포 URL:** https://sprint-mission-16-ckga9gaiq-dongjin-1203s-projects.vercel.app/
+![미션16](https://github.com/user-attachments/assets/e8503c2b-0ba8-4b55-8cbf-8ca267507e70)
+
 
 ---
 
