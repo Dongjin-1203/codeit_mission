@@ -52,7 +52,7 @@ Python (학습) → ONNX 변환 → TypeScript (웹) → 브라우저 추론 →
 
 ### 모델 아키텍처
 
-#### 1. CNN (Convolutional Neural Network)
+#### 1. CNN (Convolutional Neural Network)(사전 제공된 onnx 파일로 확인인)
 
 ```python
 class SimpleCNN(nn.Module):
@@ -178,42 +178,6 @@ class VisionTransformer(nn.Module):
 
 ### 모델 저장 (3가지 형식)
 
-#### CNN 모델 저장
-
-**1. 일반 PyTorch 모델 (.pth)**
-```python
-torch.save(model.state_dict(), 'mnist_cnn.pth')
-```
-
-**2. 양자화 모델 (.pth)**
-```python
-import torch.quantization as quantization
-
-model_quantized = quantization.quantize_dynamic(
-    model, {nn.Linear}, dtype=torch.qint8
-)
-torch.save(model_quantized.state_dict(), 'mnist_cnn_quantized.pth')
-```
-
-**파일 크기 비교:**
-- 원본: 1.7 MB
-- 양자화: 0.5 MB (70% 감소)
-
-**3. ONNX 모델 (.onnx)**
-```python
-dummy_input = torch.randn(1, 1, 28, 28)
-torch.onnx.export(
-    model,
-    dummy_input,
-    'mnist_cnn.onnx',
-    input_names=['Input3'],
-    output_names=['Plus214_Output_0'],
-    opset_version=13
-)
-```
-
----
-
 #### ViT 모델 ONNX 변환 (External Data 처리)
 
 **문제점:**
@@ -239,8 +203,8 @@ torch.onnx.export(
 
 **생성된 파일:**
 ```
-mission_16_ViT_v1.onnx       (10 KB) - 모델 구조만
-mission_16_ViT_v1.onnx_data  (800 KB) - 가중치 데이터
+mission_16_ViT_v1.onnx       (600 KB) - 모델 구조만
+mission_16_ViT_v1.onnx_data  (4100 KB) - 가중치 데이터
 ```
 
 ---
@@ -272,12 +236,12 @@ print("✅ External data 병합 완료!")
 **병합 전후 비교:**
 ```
 # 병합 전
-mission_16_ViT_v1.onnx       (10 KB)
-mission_16_ViT_v1.onnx_data  (800 KB)
+mission_16_ViT_v1.onnx       (600 KB)
+mission_16_ViT_v1.onnx_data  (4100 KB)
 → 총 2개 파일, 관리 복잡
 
 # 병합 후
-mission_16_ViT_v1_merged.onnx (810 KB)
+mission_16_ViT_v1_merged.onnx (4700 KB)
 → 1개 파일, 배포 간편!
 ```
 
