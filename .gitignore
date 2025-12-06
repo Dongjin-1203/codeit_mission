@@ -5,3 +5,6 @@ mission_15/mission-result/researcher2/models
 
 mission_16/data
 mission_16/models
+
+# wasm files
+/*.{wasm}
