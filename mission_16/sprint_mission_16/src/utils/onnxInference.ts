@@ -1,5 +1,5 @@
 import * as ort from 'onnxruntime-web';
-import { InferenceResult } from './type';
+import { InferenceResult } from './types';
 
 function softmax(logits: number[]): number[] {
     // 1. 각 값에 exp() 적용

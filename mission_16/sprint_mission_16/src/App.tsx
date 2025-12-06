@@ -6,7 +6,7 @@ import { ImageUploader } from './components/ImageUploader';
 import { ModelCard } from './components/ModelCard';
 import { preprocessImage } from './utils/ImagePreprocess';
 import { loadModel, runInference } from './utils/onnxInference';
-import { InferenceResult } from './utils/type';
+import { InferenceResult } from './utils/types';
 
 function App() {
   // ========== State 선언 ==========
@@ -32,13 +32,53 @@ function App() {
   useEffect(() => {
     async function loadModels() {
       // 구현
+      try{
+        setIsModelLoading(true);
+
+        // 두 모델 동시 로드
+        const [cnn, vit] = await Promise.all([
+            loadModel('/models/mnist_cnn.onnx'),
+            loadModel('/models/mission_16_ViT_v1_epoch_10__merged.onnx')
+        ]);
+
+        setCnnSession(cnn);
+        setVitSession(vit);
+        setIsModelLoading(false);
+      } catch (err) {
+        setError(`모델 로드 실패: ${err}`);
+        setIsModelLoading(false);
+      }
     }
     loadModels();
-  }, []);
+  }, []);   // 컴포넌트 마운트 시 1번만 실행
 
   // ========== 이미지 업로드 핸들러 ==========
   const handleImageUpload = async (file: File) => {
     // 구현
+    try {
+        // 1. 이미지 전처리
+        const inputData = await preprocessImage(file);
+
+        // 2. CNN 추론
+        if (cnnSession) {
+            setIsCnnInferring(true);
+            const result = await runInference(cnnSession, inputData);
+            setCnnResult(result);
+            setIsCnnInferring(false);
+        }
+
+        // 3. CNN 추론
+        if (vitSession) {
+            setIsVitInferring(true);
+            const result = await runInference(vitSession, inputData);
+            setVitResult(result);
+            setIsVitInferring(false);
+        }
+    } catch (err) {
+        setError(`추론 실패: ${err}`);
+        setIsCnnInferring(false);
+        setIsVitInferring(false);
+    }
   };
 
   // ========== UI 렌더링 ==========

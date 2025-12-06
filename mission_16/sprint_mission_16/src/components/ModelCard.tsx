@@ -1,4 +1,4 @@
-import { InferenceResult } from '../utils/type';
+import { InferenceResult } from '../utils/types';
 
 interface ModelCardProps {
   modelName: string;                // "CNN" 또는 "ViT"
