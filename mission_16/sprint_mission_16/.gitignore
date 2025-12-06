@@ -26,3 +26,4 @@ dist-ssr
 # wasm files
 # wasm files
 public/*.wasm
+.vercel
