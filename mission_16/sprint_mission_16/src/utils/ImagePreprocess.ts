@@ -51,3 +51,34 @@ function preprocessImage(file: File): Promise<Float32Array> {
         reader.readAsDataURL(file);
     });
 }
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = (event) => {
+                const img = new Image();
+                
+                // 이미지 로드 성공
+                img.onload = () => {
+                    resolve(img);
+                };
+
+                // 이미지 로드 실패
+                img.onerror = () => {
+                    reject(new Error('이미지 로드 실패'));
+                };
+
+                // 이미지 src 설정
+                img.src = event.target?.result as string;
+        };
+
+        // FileReader 에러 처리 추가!
+        reader.onerror = () => {
+            reject(new Error('파일 읽기 실패'));
+        };
+
+        // 파일 읽기 시작
+        reader.readAsDataURL(file);
+    });
+}
