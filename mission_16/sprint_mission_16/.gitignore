@@ -24,4 +24,5 @@ dist-ssr
 *.sw?
 
 # wasm files
-/*.{wasm}
+# wasm files
+public/*.wasm

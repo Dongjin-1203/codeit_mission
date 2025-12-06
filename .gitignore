@@ -7,4 +7,5 @@ mission_16/data
 mission_16/models
 
 # wasm files
-/*.{wasm}
+public/*.wasm
+public/ort-wasm-simd-threaded.asyncify.wasm
