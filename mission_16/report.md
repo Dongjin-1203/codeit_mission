@@ -4,9 +4,6 @@
 **프로젝트:** MNIST 손글씨 숫자 분류 웹 애플리케이션  
 **배포 URL:** https://sprint-mission-16-ckga9gaiq-dongjin-1203s-projects.vercel.app/
 **시연 영상**
-![미션16](https://github.com/user-attachments/assets/9ff52370-ffc9-4431-afe3-d3e1b588d8f4)
-
-
 ---
 
 ## 📑 목차
@@ -50,9 +47,7 @@ Python (학습) → ONNX 변환 → TypeScript (웹) → 브라우저 추론 →
 
 ## 🐍 Python 모델 개발
 
-### 모델 아키텍처
-
-#### 1. CNN (Convolutional Neural Network)(사전 제공된 onnx 파일로 확인인)
+### 모델 아키텍처 (CNN)
 
 ```python
 class SimpleCNN(nn.Module):
@@ -79,246 +74,34 @@ class SimpleCNN(nn.Module):
 **학습 데이터:** MNIST (60,000장)  
 **테스트 정확도:** 98.5%
 
----
-
-#### 2. ViT (Vision Transformer)
-
-```python
-class PatchEmbedding(nn.Module):
-    def __init__(self, img_size=28, patch_size=4, in_channels=1, embed_dim=128):
-        super().__init__()
-        self.num_patches = (img_size // patch_size) ** 2  # 49 patches
-        self.proj = nn.Conv2d(in_channels, embed_dim, 
-                             kernel_size=patch_size, stride=patch_size)
-        
-    def forward(self, x):
-        x = self.proj(x)  # [B, 128, 7, 7]
-        x = x.flatten(2)  # [B, 128, 49]
-        x = x.transpose(1, 2)  # [B, 49, 128]
-        return x
-
-class VisionTransformer(nn.Module):
-    def __init__(self, img_size=28, patch_size=4, embed_dim=128, 
-                 depth=6, num_heads=8, num_classes=10):
-        super().__init__()
-        
-        # Patch Embedding
-        self.patch_embed = PatchEmbedding(img_size, patch_size, 1, embed_dim)
-        num_patches = self.patch_embed.num_patches
-        
-        # Class token & Position embedding
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
-        
-        # Transformer Encoder
-        self.blocks = nn.ModuleList([
-            nn.TransformerEncoderLayer(
-                d_model=embed_dim,
-                nhead=num_heads,
-                dim_feedforward=embed_dim * 4,
-                dropout=0.1,
-                batch_first=True
-            )
-            for _ in range(depth)
-        ])
-        
-        # Classification head
-        self.norm = nn.LayerNorm(embed_dim)
-        self.head = nn.Linear(embed_dim, num_classes)
-        
-    def forward(self, x):
-        B = x.shape[0]
-        
-        # Patch embedding
-        x = self.patch_embed(x)  # [B, 49, 128]
-        
-        # Add class token
-        cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = torch.cat([cls_tokens, x], dim=1)  # [B, 50, 128]
-        
-        # Add position embedding
-        x = x + self.pos_embed
-        
-        # Transformer blocks
-        for block in self.blocks:
-            x = block(x)
-        
-        # Classification
-        x = self.norm(x)
-        cls_token_final = x[:, 0]
-        out = self.head(cls_token_final)
-        
-        return out
-```
-
-**파라미터 수:** ~200,000  
-**패치 크기:** 4×4  
-**패치 개수:** 49 (7×7)  
-**임베딩 차원:** 128  
-**Transformer 깊이:** 6 layers  
-**Attention Heads:** 8  
-**테스트 정확도:** 97.8%
-
----
-
-### ViT vs CNN 비교
-
-| 항목 | CNN | ViT |
-|------|-----|-----|
-| 파라미터 수 | 421,642 | ~200,000 |
-| 학습 속도 | 빠름 | 중간 |
-| 추론 속도 | 빠름 (~10ms) | 느림 (~25ms) |
-| 정확도 | 98.5% | 97.8% |
-| 메모리 | 적음 | 중간 |
-| 특징 | 지역 패턴 학습 | 전역 관계 학습 |
-
-**결론:** MNIST처럼 단순한 데이터셋에서는 CNN이 더 효율적
-
----
-
 ### 모델 저장 (3가지 형식)
 
-#### ViT 모델 ONNX 변환 (External Data 처리)
+**1. 일반 PyTorch 모델 (.pth)**
+```python
+torch.save(model.state_dict(), 'mnist_cnn.pth')
+```
 
-**문제점:**
-- ViT 모델은 크기가 커서 기본 ONNX 변환 시 `.onnx` + `.onnx_data` 2개 파일 생성
-- 웹 배포 시 2개 파일 관리가 복잡함
-- ONNX Runtime Web은 단일 파일 선호
+**2. 양자화 모델 (.pth)**
+```python
+import torch.quantization as quantization
 
-**초기 변환 (2개 파일 생성):**
+model_quantized = quantization.quantize_dynamic(
+    model, {nn.Linear}, dtype=torch.qint8
+)
+torch.save(model_quantized.state_dict(), 'mnist_cnn_quantized.pth')
+```
+
+**3. ONNX 모델 (.onnx)**
 ```python
 dummy_input = torch.randn(1, 1, 28, 28)
-
-torch.onnx.export(
-    vit_model,
-    dummy_input,
-    'mission_16_ViT_v1.onnx',
-    input_names=['input'],
-    output_names=['output'],
-    opset_version=17,  # LayerNorm 지원
-    do_constant_folding=True,
-    export_params=True
-)
-```
-
-**생성된 파일:**
-```
-mission_16_ViT_v1.onnx       (600 KB) - 모델 구조만
-mission_16_ViT_v1.onnx_data  (4100 KB) - 가중치 데이터
-```
-
----
-
-### 🔧 ONNX External Data 병합
-
-**단일 파일로 병합하는 이유:**
-1. 웹 배포 시 파일 관리 간소화
-2. ONNX Runtime Web 호환성 향상
-3. HTTP 요청 횟수 감소
-
-**병합 코드:**
-```python
-import onnx
-from onnx.external_data_helper import convert_model_to_external_data, convert_model_from_external_data
-
-# 1. ONNX 모델 로드 (external data 포함)
-model = onnx.load('mission_16_ViT_v1.onnx', load_external_data=True)
-
-# 2. External data를 모델 내부로 통합
-convert_model_from_external_data(model)
-
-# 3. 단일 파일로 저장
-onnx.save(model, 'mission_16_ViT_v1_merged.onnx')
-
-print("✅ External data 병합 완료!")
-```
-
-**병합 전후 비교:**
-```
-# 병합 전
-mission_16_ViT_v1.onnx       (600 KB)
-mission_16_ViT_v1.onnx_data  (4100 KB)
-→ 총 2개 파일, 관리 복잡
-
-# 병합 후
-mission_16_ViT_v1_merged.onnx (4700 KB)
-→ 1개 파일, 배포 간편!
-```
-
----
-
-### ONNX Opset 버전 선택
-
-**Opset 13 (CNN):**
-- 기본 연산 지원
-- LayerNorm 미지원
-- CNN에 충분
-
-**Opset 17 (ViT):**
-- LayerNorm 네이티브 지원
-- Transformer 연산 최적화
-- ViT 필수
-
-**선택 기준:**
-```python
-# CNN → Opset 13
-torch.onnx.export(..., opset_version=13)
-
-# ViT → Opset 17 (LayerNorm 때문에)
-torch.onnx.export(..., opset_version=17)
-```
-
----
-
-### 전체 변환 파이프라인
-
-```python
-# 1. PyTorch 모델 학습
-model = VisionTransformer(...)
-# ... 학습 코드 ...
-
-# 2. 일반 체크포인트 저장
-torch.save(model.state_dict(), 'mission_16_ViT_v1.pth')
-
-# 3. 양자화 (Linear 레이어만)
-model_quantized = torch.quantization.quantize_dynamic(
-    model, 
-    {nn.Linear},  # LayerNorm은 FP32 유지
-    dtype=torch.qint8
-)
-torch.save(model_quantized.state_dict(), 'mission_16_ViT_v1_quantized.pth')
-
-# 4. ONNX 변환 (External data)
 torch.onnx.export(
     model,
     dummy_input,
-    'mission_16_ViT_v1.onnx',
-    opset_version=17
+    'mnist_cnn.onnx',
+    input_names=['Input3'],
+    output_names=['Plus214_Output_0'],
+    opset_version=13
 )
-
-# 5. External data 병합
-model = onnx.load('mission_16_ViT_v1.onnx', load_external_data=True)
-convert_model_from_external_data(model)
-onnx.save(model, 'mission_16_ViT_v1_merged.onnx')
-```
-
----
-
-### 최종 파일 정리
-
-```
-models/
-├── CNN 모델
-│   ├── mnist_cnn.pth (1.7 MB)
-│   ├── mnist_cnn_quantized.pth (0.5 MB)
-│   └── mnist_cnn.onnx (1.7 MB)
-│
-└── ViT 모델
-    ├── mission_16_ViT_v1.pth (800 KB)
-    ├── mission_16_ViT_v1_quantized.pth (300 KB)
-    ├── mission_16_ViT_v1.onnx (10 KB) - 구조만
-    ├── mission_16_ViT_v1.onnx_data (800 KB) - 가중치
-    └── mission_16_ViT_v1_merged.onnx (810 KB) ⭐ 웹 배포용
 ```
 
 ---
@@ -371,28 +154,8 @@ import type { InferenceResult } from './utils/types';
 
 ---
 
-### 문제 3: Next.js vs Vite 혼동 ❌
 
-**문제:**
-- 실수로 Next.js 프로젝트 생성 (`npm create next-app`)
-- 작성한 코드는 Vite + React용
-
-**증상:**
-- Next.js 기본 페이지 표시
-- 우리 코드가 동작하지 않음
-
-**해결:**
-```bash
-# ❌ 잘못됨
-npm create next-app@latest sprint_mission_16
-
-# ✅ 올바름
-npm create vite@latest sprint_mission_16 -- --template react-ts
-```
-
----
-
-### 문제 4: ONNX Runtime Web - WASM 파일 로드 실패 ❌❌❌
+### 문제 3: ONNX Runtime Web - WASM 파일 로드 실패 ❌❌❌
 
 **에러 메시지:**
 ```
@@ -419,7 +182,7 @@ expected magic word 00 61 73 6d, found 3c 21 64 6f @+0)
 
 ---
 
-### 문제 5: Vite MIME 타입 설정 문제 ❌
+### 문제 : Vite MIME 타입 설정 문제 ❌
 
 **에러 메시지:**
 ```
@@ -431,28 +194,6 @@ Incorrect response MIME type. Expected 'application/wasm'
 - public 폴더의 WASM 파일이 제대로 처리되지 않음
 
 **최종 해결책:** `vite.config.ts` 설정 추가
-
----
-
-### 문제 6: .gitignore WASM 파일 무시 안 됨 ❌
-
-**문제:**
-```gitignore
-/*.{wasm}  # ❌ 이건 루트만
-```
-
-**증상:**
-- 이미 Git에 추가된 WASM 파일은 .gitignore가 적용 안 됨
-- public/*.wasm 경로 문제
-
-**해결:**
-```bash
-# .gitignore 수정
-public/*.wasm
-
-# Git 캐시에서 제거
-git rm --cached public/*.wasm
-```
 
 ---
 
@@ -598,22 +339,6 @@ wasmFiles.forEach(file => {
 });
 
 console.log('✨ WASM files copied successfully!');
-```
-
----
-
-### 3. package.json 스크립트
-
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "postinstall": "npm run copy-wasm",
-    "copy-wasm": "node scripts/copy-wasm.js"
-  }
-}
 ```
 
 ---
@@ -861,7 +586,7 @@ vercel --prod
 
 **결과:**
 ```
-✅ Production: https://sprint-mission-16-ckga9gaiq-dongjin-1203s-projects.vercel.app/ [2s]
+✅ Production: https://mnist-vit-web.vercel.app [2s]
 ```
 
 ---
@@ -920,7 +645,7 @@ mission_16/
 
 ### 배포 URL
 ```
-Production: https://mnist-vit-web.vercel.app
+Production: https://sprint-mission-16-ckga9gaiq-dongjin-1203s-projects.vercel.app/
 ```
 
 ### 성능 지표
@@ -983,27 +708,7 @@ import type { ... }  // 타입만 import
 
 ---
 
-### 4. Git 파일 관리
-
-**이미 추적 중인 파일:**
-```bash
-# .gitignore 추가 후
-git rm --cached public/*.wasm
-```
-
-.gitignore는 아직 추적되지 않은 파일만 무시
-
----
-
-### 5. 브라우저 캐시 관리
-
-**문제 발생 시:**
-- Vite 캐시 삭제: `rm -rf node_modules/.vite`
-- 브라우저 하드 새로고침: `Ctrl+Shift+R`
-
----
-
-### 6. Vercel 배포 자동화
+### 4. Vercel 배포 자동화
 
 **GitHub 연동 시:**
 - `git push` → 자동 빌드 → 자동 배포
@@ -1062,7 +767,62 @@ assetsInclude: ['**/*.wasm']
 
 ---
 
-**작성자:** AI 4기 지동진
+## 📚 참고 자료
+
+### 공식 문서
+- [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)
+- [Vite](https://vitejs.dev/)
+- [Vercel](https://vercel.com/docs)
+- [React TypeScript](https://react-typescript-cheatsheet.netlify.app/)
+
+### GitHub Issues
+- [ONNX Runtime #9322](https://github.com/microsoft/onnxruntime/issues/9322) - WASM 로딩 문제
+
+### 블로그 & 튜토리얼
+- [ONNX.js to ONNX Runtime Web Migration](https://onnxruntime.ai/docs/tutorials/web/browser.html)
+- [Deploying Vite to Vercel](https://vitejs.dev/guide/static-deploy.html#vercel)
+
+---
+
+## ✅ 배포 완료 체크리스트
+
+### 개발
+- [x] Python 모델 학습 완료
+- [x] ONNX 변환 성공
+- [x] TypeScript 타입 정의
+- [x] 이미지 전처리 구현
+- [x] ONNX 추론 로직 구현
+- [x] React 컴포넌트 작성
+- [x] vite.config.ts 설정
+- [x] WASM 자동 복사 스크립트
+
+### 테스트
+- [x] 로컬 개발 서버 테스트
+- [x] 모델 로드 성공
+- [x] 이미지 업로드 테스트
+- [x] 추론 결과 정확도
+- [x] 프로덕션 빌드 성공
+- [x] 프리뷰 서버 테스트
+
+### 배포
+- [x] Vercel CLI 설치
+- [x] Vercel 로그인
+- [x] 프리뷰 배포 성공
+- [x] 프로덕션 배포 성공
+- [x] GitHub 연동
+- [x] 성능 최적화 확인
+- [x] Lighthouse 점수 확인
+
+### 문서화
+- [x] 버그 리포트 작성
+- [x] 설치 가이드 작성
+- [x] 배포 가이드 작성
+- [x] README 작성
+- [x] 코드 주석 추가
+
+---
+
+**작성자:** AI 4기 지동진  
 **최종 업데이트:** 2024-12-06  
 **프로젝트 상태:** ✅ 배포 완료 및 운영 중
 
