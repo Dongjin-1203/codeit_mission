@@ -3,3 +3,4 @@ onnxruntime
 pathlib
 pillow
 numpy
+streamlit_drawable_canvas

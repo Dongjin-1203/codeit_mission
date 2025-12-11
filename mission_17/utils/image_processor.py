@@ -58,3 +58,48 @@ def create_blank_canvas(size=(280, 280)):
     canvas[:, :, 3] = 0  # 알파 채널을 0으로 (투명)
     
     return canvas
+
+def visualize_preprocessed_image(preprocessed_array):
+    """전처리된 이미지를 Streamlit에 표시"""
+    try:
+        # (1, 1, 28, 28) → (28, 28) 추출
+        image_2d = preprocessed_array[0, 0, :, :]
+        
+        # [0, 1] → [0, 255] 변환
+        image_uint8 = (image_2d * 255).astype(np.uint8)
+        
+        # PIL Image로 변환
+        pil_image = Image.fromarray(image_uint8, mode='L')
+        
+        return pil_image
+    
+    except Exception as e:
+        st.error(f"이미지 시각화 중 오류 발생: {e}")
+        raise
+
+def validate_preprocessed_shape(preprocessed_array):
+    """전처리된 이미지의 shape, dtype, range 검증"""
+    try:
+        # Shape 검증
+        expected_shape = (1, 1, 28, 28)
+        if preprocessed_array.shape != expected_shape:
+            st.warning(f"❌ Shape 불일치: {preprocessed_array.shape} (예상: {expected_shape})")
+            return False
+        
+        # Dtype 검증
+        if preprocessed_array.dtype != np.float32:
+            st.warning(f"❌ Dtype 불일치: {preprocessed_array.dtype} (예상: float32)")
+            return False
+        
+        # Range 검증
+        min_val, max_val = preprocessed_array.min(), preprocessed_array.max()
+        if not (0 <= min_val and max_val <= 1):
+            st.warning(f"❌ Range 초과: [{min_val:.3f}, {max_val:.3f}] (예상: [0, 1])")
+            return False
+        
+        st.success("✅ 전처리 검증 통과")
+        return True
+    
+    except Exception as e:
+        st.error(f"검증 중 오류 발생: {e}")
+        return False
