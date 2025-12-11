@@ -7,3 +7,5 @@ mission_16/data
 mission_16/models
 
 *venv/
+
+*.onnx

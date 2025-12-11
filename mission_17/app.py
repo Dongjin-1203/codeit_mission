@@ -5,9 +5,10 @@ import numpy as np
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
 import pandas as pd
+import time
 
 # 커스텀 모듈 import
-from models.model_loader import load_onnx_model
+from models.model_loader import load_onnx_model, get_available_models, get_model_info, is_model_downloaded
 from utils.image_processor import preprocess_canvas_image, visualize_preprocessed_image, validate_preprocessed_shape
 from utils.inferencer import predict_digit, format_prediction_result, display_confidence_warning, get_top_k_predictions
 
@@ -58,6 +59,20 @@ st.markdown("""
         margin: 0.5rem 0;
         text-align: center;
     }
+    .model-info-box {
+        background-color: #F0F8FF;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #1E88E5;
+        margin: 1rem 0;
+    }
+    .comparison-box {
+        background-color: #FFF3E0;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 5px solid #FF9800;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -72,31 +87,113 @@ if 'model_loaded' not in st.session_state:
 if 'model_info' not in st.session_state:
     st.session_state.model_info = None
 
+if 'current_model' not in st.session_state:
+    st.session_state.current_model = 'MNIST-8'
+
+if 'compare_mode' not in st.session_state:
+    st.session_state.compare_mode = False
+
+if 'loaded_models' not in st.session_state:
+    st.session_state.loaded_models = {}
+
 
 # ==================== 사이드바 ====================
 with st.sidebar:
-    st.markdown("### ⚙️ 설정")
+    st.markdown("### 🤖 모델 설정")
+    
+    # 비교 모드 토글
+    compare_mode = st.checkbox(
+        "📊 모델 비교 모드",
+        value=st.session_state.compare_mode,
+        help="여러 모델을 동시에 실행하고 결과를 비교합니다"
+    )
+    st.session_state.compare_mode = compare_mode
+    
+    st.divider()
+    
+    # 사용 가능한 모델 목록
+    available_models = get_available_models()
+    
+    if not compare_mode:
+        # ===== 단일 모델 모드 =====
+        st.markdown("#### 모델 선택")
+        model_choice = st.selectbox(
+            "사용할 모델",
+            options=available_models,
+            index=available_models.index(st.session_state.current_model),
+            help="ONNX 모델 버전을 선택하세요"
+        )
+        
+        # 모델 변경 감지
+        if model_choice != st.session_state.current_model:
+            st.session_state.current_model = model_choice
+            st.session_state.model_loaded = False
+            st.rerun()
+        
+        # 선택된 모델 정보 표시
+        selected_model_info = get_model_info(model_choice)
+        is_downloaded = is_model_downloaded(model_choice)
+        download_status = "✅ 다운로드됨" if is_downloaded else "⬇️ 다운로드 필요"
+        
+        st.markdown(f"""
+        <div class="model-info-box">
+            <b>📦 {model_choice}</b><br>
+            {selected_model_info['description']}<br>
+            <small>Opset: {selected_model_info['opset_version']}</small><br>
+            <small>{download_status}</small>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    else:
+        # ===== 비교 모드 =====
+        st.markdown("#### 비교할 모델 선택")
+        selected_models = st.multiselect(
+            "모델 선택 (최대 3개)",
+            options=available_models,
+            default=[available_models[0], available_models[1]],
+            max_selections=3,
+            help="비교할 모델들을 선택하세요"
+        )
+        
+        if len(selected_models) == 0:
+            st.warning("⚠️ 최소 1개 이상의 모델을 선택하세요")
+        
+        # 선택된 모델들 정보 표시
+        for model_name in selected_models:
+            model_info = get_model_info(model_name)
+            is_downloaded = is_model_downloaded(model_name)
+            status = "✅" if is_downloaded else "⬇️"
+            st.markdown(f"""
+            <div class="model-info-box">
+                {status} <b>{model_name}</b><br>
+                <small>{model_info['description']}</small>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.divider()
     
     # 캔버스 설정
-    st.markdown("#### 캔버스 설정")
+    st.markdown("### ⚙️ 캔버스 설정")
     canvas_size = st.slider("캔버스 크기", 200, 400, 280, 20)
     stroke_width = st.slider("펜 굵기", 5, 30, 15, 1)
     
     st.divider()
     
-    # 모델 정보
-    st.markdown("#### 📊 모델 정보")
-    st.info("""
-    **MNIST ONNX 모델**
-    - 입력: 28x28 흑백 이미지
-    - 출력: 0-9 숫자 확률
-    - 정확도: ~99%
-    """)
+    # 로드된 모델 정보
+    if st.session_state.model_loaded and not compare_mode:
+        st.markdown("### 📊 로드된 모델 정보")
+        model_data = st.session_state.model_info
+        st.info(f"""
+        **모델**: {model_data['model_name']}  
+        **크기**: {model_data['model_size_mb']} MB  
+        **입력**: {model_data['input_shape']}  
+        **출력**: {model_data['output_shape']}
+        """)
     
     st.divider()
     
     # 히스토리 관리
-    st.markdown("#### 📝 히스토리 관리")
+    st.markdown("### 📝 히스토리 관리")
     if st.button("🗑️ 전체 삭제", use_container_width=True):
         st.session_state.history = []
         st.success("히스토리가 삭제되었습니다!")
@@ -106,24 +203,39 @@ with st.sidebar:
 
 
 # ==================== 메인 헤더 ====================
-st.markdown('<h1 class="main-title">🔢 손글자 숫자 인식 서비스</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">손으로 숫자를 그려보세요! AI가 인식합니다.</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-title">🔢 손글씨 숫자 인식 서비스</h1>', unsafe_allow_html=True)
+
+if compare_mode:
+    st.markdown('<p class="sub-title">📊 모델 비교 모드 - 여러 모델의 성능을 비교해보세요!</p>', unsafe_allow_html=True)
+else:
+    st.markdown('<p class="sub-title">손으로 숫자를 그려보세요! AI가 인식합니다.</p>', unsafe_allow_html=True)
 
 
 # ==================== 모델 로드 ====================
-if not st.session_state.model_loaded:
-    with st.spinner("🔄 ONNX 모델을 로딩중입니다..."):
-        try:
-            st.session_state.model_info = load_onnx_model()
-            st.session_state.model_loaded = True
-            st.success("✅ 모델 로드 완료!")
-        except Exception as e:
-            st.error(f"❌ 모델 로드 실패: {e}")
-            st.stop()
+if not compare_mode:
+    # 단일 모델 모드
+    if not st.session_state.model_loaded:
+        with st.spinner(f"🔄 {st.session_state.current_model} 모델을 로딩중입니다..."):
+            try:
+                st.session_state.model_info = load_onnx_model(st.session_state.current_model)
+                st.session_state.model_loaded = True
+                st.success(f"✅ {st.session_state.current_model} 모델 로드 완료!")
+            except Exception as e:
+                st.error(f"❌ 모델 로드 실패: {e}")
+                st.stop()
+else:
+    # 비교 모드 - 선택된 모델들 로드
+    if len(selected_models) > 0:
+        for model_name in selected_models:
+            if model_name not in st.session_state.loaded_models:
+                with st.spinner(f"🔄 {model_name} 로딩중..."):
+                    try:
+                        st.session_state.loaded_models[model_name] = load_onnx_model(model_name)
+                    except Exception as e:
+                        st.error(f"❌ {model_name} 로드 실패: {e}")
 
 
 # ==================== 메인 영역 ====================
-# 상단: 입력 & 전처리 & 결과
 col1, col2, col3 = st.columns([2, 1.5, 2])
 
 # -------------------- 컬럼 1: 입력 캔버스 --------------------
@@ -177,8 +289,6 @@ if predict_button and canvas_result.image_data is not None:
             with st.spinner("🔄 이미지 전처리 중..."):
                 canvas_image = canvas_result.image_data
                 preprocessed = preprocess_canvas_image(canvas_image)
-                
-                # 전처리 검증
                 validate_preprocessed_shape(preprocessed)
             
             # 2. 전처리 이미지 표시
@@ -189,45 +299,103 @@ if predict_button and canvas_result.image_data is not None:
                     use_container_width=True
                 )
             
-            # 3. 모델 추론
-            with st.spinner("🤖 AI가 숫자를 인식중입니다..."):
-                result = predict_digit(st.session_state.model_info, preprocessed)
-            
-            # 4. 결과 표시
-            with result_placeholder.container():
-                # 예측 결과 박스
-                st.markdown(
-                    f'<div class="prediction-box">{format_prediction_result(result)}</div>',
-                    unsafe_allow_html=True
-                )
+            if not compare_mode:
+                # ===== 단일 모델 모드 =====
+                with st.spinner(f"🤖 {st.session_state.current_model}이(가) 숫자를 인식중입니다..."):
+                    result = predict_digit(st.session_state.model_info, preprocessed)
                 
-                # 신뢰도 경고
-                display_confidence_warning(result['confidence'], threshold=0.6)
+                with result_placeholder.container():
+                    st.markdown(
+                        f'<div class="prediction-box">{format_prediction_result(result)}</div>',
+                        unsafe_allow_html=True
+                    )
+                    st.caption(f"🤖 사용된 모델: **{st.session_state.current_model}**")
+                    display_confidence_warning(result['confidence'], threshold=0.6)
+                    
+                    st.markdown("#### 📈 각 숫자별 확률")
+                    prob_df = pd.DataFrame({
+                        '숫자': [f"{i}" for i in range(10)],
+                        '확률(%)': [result['probabilities'][str(i)] * 100 for i in range(10)]
+                    })
+                    st.bar_chart(prob_df.set_index('숫자'))
+                    
+                    st.markdown("#### 🏆 Top-3 예측")
+                    top3 = get_top_k_predictions(result['probabilities'], k=3)
+                    for idx, (digit, prob) in enumerate(top3, 1):
+                        st.write(f"{idx}. **{digit}** - {prob * 100:.2f}%")
                 
-                # 확률 막대 차트
-                st.markdown("#### 📈 각 숫자별 확률")
-                prob_df = pd.DataFrame({
-                    '숫자': [f"{i}" for i in range(10)],
-                    '확률(%)': [result['probabilities'][str(i)] * 100 for i in range(10)]
-                })
-                st.bar_chart(prob_df.set_index('숫자'))
+                # 히스토리 저장
+                history_item = {
+                    'image': visualize_preprocessed_image(preprocessed),
+                    'predicted_label': result['predicted_label'],
+                    'confidence': result['confidence'],
+                    'model_name': st.session_state.current_model,
+                    'timestamp': pd.Timestamp.now().strftime('%H:%M:%S')
+                }
+                st.session_state.history.insert(0, history_item)
                 
-                # Top-3 예측
-                st.markdown("#### 🏆 Top-3 예측")
-                top3 = get_top_k_predictions(result['probabilities'], k=3)
-                for idx, (digit, prob) in enumerate(top3, 1):
-                    st.write(f"{idx}. **{digit}** - {prob * 100:.2f}%")
+            else:
+                # ===== 비교 모드 =====
+                if len(selected_models) == 0:
+                    st.warning("⚠️ 비교할 모델을 선택하세요")
+                else:
+                    with st.spinner(f"🤖 {len(selected_models)}개 모델 비교 중..."):
+                        comparison_results = []
+                        
+                        for model_name in selected_models:
+                            model_info = st.session_state.loaded_models[model_name]
+                            result = predict_digit(model_info, preprocessed)
+                            comparison_results.append({
+                                'model': model_name,
+                                'prediction': result['predicted_label'],
+                                'confidence': result['confidence'],
+                                'inference_time': result['inference_time'],
+                                'probabilities': result['probabilities']
+                            })
+                    
+                    # 결과 표시
+                    with result_placeholder.container():
+                        st.markdown('<div class="comparison-box">', unsafe_allow_html=True)
+                        st.markdown("### 📊 모델 비교 결과")
+                        
+                        # 비교 테이블
+                        comparison_df = pd.DataFrame([{
+                            '모델': r['model'],
+                            '예측': r['prediction'],
+                            '신뢰도(%)': f"{r['confidence']*100:.2f}",
+                            '추론시간(ms)': f"{r['inference_time']*1000:.2f}"
+                        } for r in comparison_results])
+                        
+                        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+                        
+                        # 일치 여부 확인
+                        predictions = [r['prediction'] for r in comparison_results]
+                        if len(set(predictions)) == 1:
+                            st.success(f"✅ 모든 모델이 **{predictions[0]}** 으로 일치합니다!")
+                        else:
+                            st.warning(f"⚠️ 모델 예측 불일치: {set(predictions)}")
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        # 각 모델별 상세 결과
+                        st.markdown("### 📈 모델별 확률 분포")
+                        
+                        tabs = st.tabs([r['model'] for r in comparison_results])
+                        for idx, tab in enumerate(tabs):
+                            with tab:
+                                result = comparison_results[idx]
+                                prob_df = pd.DataFrame({
+                                    '숫자': [f"{i}" for i in range(10)],
+                                    '확률(%)': [result['probabilities'][str(i)] * 100 for i in range(10)]
+                                })
+                                st.bar_chart(prob_df.set_index('숫자'))
+                                
+                                top3 = get_top_k_predictions(result['probabilities'], k=3)
+                                st.markdown("**Top-3:**")
+                                for rank, (digit, prob) in enumerate(top3, 1):
+                                    st.write(f"{rank}. **{digit}** - {prob * 100:.2f}%")
             
-            # 5. 히스토리에 저장
-            history_item = {
-                'image': visualize_preprocessed_image(preprocessed),
-                'predicted_label': result['predicted_label'],
-                'confidence': result['confidence'],
-                'timestamp': pd.Timestamp.now().strftime('%H:%M:%S')
-            }
-            st.session_state.history.insert(0, history_item)  # 최신 항목을 맨 앞에
-            
-            # 히스토리 최대 20개로 제한
+            # 히스토리 제한
             if len(st.session_state.history) > 20:
                 st.session_state.history = st.session_state.history[:20]
     
@@ -242,7 +410,6 @@ st.markdown('<h3 class="section-header">💾 4. 이미지 저장소</h3>', unsaf
 if len(st.session_state.history) == 0:
     st.info("아직 저장된 이미지가 없습니다. 숫자를 그려서 예측해보세요!")
 else:
-    # 그리드 레이아웃 (5개씩)
     cols_per_row = 5
     for i in range(0, len(st.session_state.history), cols_per_row):
         cols = st.columns(cols_per_row)
@@ -251,16 +418,14 @@ else:
             if idx < len(st.session_state.history):
                 with col:
                     item = st.session_state.history[idx]
-                    
-                    # 이미지 표시
                     st.image(item['image'], use_container_width=True)
                     
-                    # 예측 정보
                     confidence_emoji = "🎯" if item['confidence'] > 0.9 else "✅" if item['confidence'] > 0.7 else "⚠️"
                     st.markdown(
                         f"""<div class="history-item">
                         {confidence_emoji} <b>{item['predicted_label']}</b><br>
                         {item['confidence']*100:.1f}%<br>
+                        <small>{item['model_name']}</small><br>
                         <small>{item['timestamp']}</small>
                         </div>""",
                         unsafe_allow_html=True
@@ -272,6 +437,6 @@ st.divider()
 st.markdown("""
 <div style='text-align: center; color: #666; padding: 1rem;'>
     <p>🤖 MNIST ONNX 모델 기반 숫자 인식 서비스</p>
-    <p><small>Powered by Streamlit & ONNX Runtime</small></p>
+    <p><small>Powered by Streamlit & ONNX Runtime | Multi-Model Comparison Support</small></p>
 </div>
 """, unsafe_allow_html=True)
