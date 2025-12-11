@@ -9,3 +9,6 @@ mission_16/models
 *venv/
 
 *.onnx
+
+*chroma_db/
+*__pycache__/
