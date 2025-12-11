@@ -132,53 +132,6 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-**macOS/Linux:**
-```bash
-# 저장소 클론
-git clone 
-cd mnist-web-service
-
-# 가상환경 생성
-python3 -m venv venv
-
-# 가상환경 활성화
-source venv/bin/activate
-
-# 패키지 설치
-pip install -r requirements.txt
-
-# Streamlit 실행
-streamlit run app.py
-```
-
-#### 2-2. conda 사용 (Anaconda/Miniconda)
-```bash
-# 저장소 클론
-git clone 
-cd mnist-web-service
-
-# conda 환경 생성
-conda create -n mnist-service python=3.11 -y
-
-# 환경 활성화
-conda activate mnist-service
-
-# 패키지 설치
-pip install -r requirements.txt
-
-# Streamlit 실행
-streamlit run app.py
-```
-
-#### 가상환경 종료
-```bash
-# venv
-deactivate
-
-# conda
-conda deactivate
-```
-
 ---
 
 ## 💻 코드 설명
