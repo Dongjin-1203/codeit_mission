@@ -1,3 +1,5 @@
 streamlit
 onnxruntime
 pathlib
+pillow
+numpy
